@@ -11,26 +11,26 @@ import (
 )
 
 const (
-	user = "postgres"
-	password = "postgres"
-	baseDados = "sist_distrib_pb"
-	host = "localhost"
-	port = "6543"
+	user      = "postgres"
+	password  = "1234"
+	baseDados = "sist_distrib_dib"
+	host      = "localhost"
+	port      = "15432"
 )
 
 type Cliente struct {
-	Id				int			`json:"id,omitempty"`
-	PrimeiroNome	string		`json:"nome,omitempty"`
-	Sobrenome		string		`json:"sobrenome,omitempty"`
-	Endereco		*Endereco	`json:"endereco,omitempty"`
+	Id           int64     `json:"id,omitempty"`
+	PrimeiroNome string    `json:"nome,omitempty"`
+	Sobrenome    string    `json:"sobrenome,omitempty"`
+	Endereco     *Endereco `json:"endereco,omitempty"`
 }
 type Endereco struct {
-	Id 			int		`json:"endereco_id,omitempty"`
-	Logradouro	string	`json:"logradouro,omitempty"`
-	Cep 		int		`json:"cep,omitempty"`
-	Bairro 		string	`json:"bairro,omitempty"`
-	Cidade 		string	`json:"cidade,omitempty"`
-	UF 			string	`json:"uf,omitempty"`
+	Id         int64  `json:"endereco_id,omitempty"`
+	Logradouro string `json:"logradouro,omitempty"`
+	Cep        int64  `json:"cep,omitempty"`
+	Bairro     string `json:"bairro,omitempty"`
+	Cidade     string `json:"cidade,omitempty"`
+	UF         string `json:"uf,omitempty"`
 }
 
 func conectaNoBancoDeDados() *sql.DB {
@@ -39,8 +39,8 @@ func conectaNoBancoDeDados() *sql.DB {
 	mensagemErro(err)
 	return db
 }
-func mensagemErro(err error)  {
-	if err != nil{
+func mensagemErro(err error) {
+	if err != nil {
 		panic(err.Error())
 	}
 }
@@ -51,16 +51,16 @@ func ListarClientes(w http.ResponseWriter, r *http.Request) {
 	var clientes []Cliente
 	for listaCliente.Next() {
 		var (
-			id, endereco_id, cep int
-			nome, sobrenome, logradouro, cidade, bairro, uf string
+			id, endereco_id, cep                            sql.NullInt64
+			nome, sobrenome, logradouro, cidade, bairro, uf sql.NullString
 		)
 		err := listaCliente.Scan(&id, &nome, &sobrenome, &endereco_id, &logradouro, &bairro, &cep, &cidade, &uf)
 		mensagemErro(err)
 		cliente := Cliente{}
-		cliente.Id = id
-		cliente.PrimeiroNome = nome
-		cliente.Sobrenome = sobrenome
-		endereco := Endereco{endereco_id, logradouro, cep, bairro, cidade, uf}
+		cliente.Id = id.Int64
+		cliente.PrimeiroNome = nome.String
+		cliente.Sobrenome = sobrenome.String
+		endereco := Endereco{endereco_id.Int64, logradouro.String, cep.Int64, bairro.String, cidade.String, uf.String}
 		cliente.Endereco = &endereco
 		clientes = append(clientes, cliente)
 	}
@@ -70,26 +70,36 @@ func ListarClientes(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(clientes)
 }
 
-
 func InsererUmCliente(w http.ResponseWriter, r *http.Request) {
 	var cliente Cliente
 	json.NewDecoder(r.Body).Decode(&cliente)
 	db := conectaNoBancoDeDados()
+	var id_endereco sql.NullInt64
+
+	if cliente.Endereco != nil {
+		id_endereco = sql.NullInt64{cliente.Endereco.Id, true}
+	}
 	queryInsert, err := db.Prepare("insert into tb_cliente (id, primeiro_nome, sobrenome, endereco_id) values (nextval('seq_cliente'), $1, $2, $3)")
 	mensagemErro(err)
-	queryInsert.Exec(cliente.PrimeiroNome, cliente.Sobrenome, cliente.Endereco.Id)
+	queryInsert.Exec(cliente.PrimeiroNome, cliente.Sobrenome, id_endereco)
 	defer db.Close()
 }
 
 func AlterarUmCliente(w http.ResponseWriter, r *http.Request) {
 	parametros := mux.Vars(r)
 	var clienteNovo Cliente
+
 	err := json.NewDecoder(r.Body).Decode(&clienteNovo)
 	mensagemErro(err)
 	db := conectaNoBancoDeDados()
-	alterarCliente, err :=  db.Prepare("update tb_cliente set primeiro_nome=$1, sobrenome=$2, endereco_id=$3 where id=$4")
+	alterarCliente, err := db.Prepare("update tb_cliente set primeiro_nome=$1, sobrenome=$2, endereco_id=$3 where id=$4")
 	mensagemErro(err)
-	alterarCliente.Exec(clienteNovo.PrimeiroNome, clienteNovo.Sobrenome, clienteNovo.Endereco.Id, parametros["ID"])
+
+	var id_endereco sql.NullInt64
+	if clienteNovo.Endereco != nil {
+		id_endereco = sql.NullInt64{clienteNovo.Endereco.Id, true}
+	}
+	alterarCliente.Exec(clienteNovo.PrimeiroNome, clienteNovo.Sobrenome, id_endereco, parametros["ID"])
 	defer db.Close()
 
 }
@@ -113,16 +123,16 @@ func ConsultarPorNomeSobrenome(w http.ResponseWriter, r *http.Request) {
 	var clientes []Cliente
 	for consultaNomeSobrenome.Next() {
 		var (
-			id, endereco_id, cep int
-			nome, sobrenome, logradouro, cidade, bairro, uf string
+			id, endereco_id, cep                            sql.NullInt64
+			nome, sobrenome, logradouro, cidade, bairro, uf sql.NullString
 		)
 		err := consultaNomeSobrenome.Scan(&id, &nome, &sobrenome, &endereco_id, &logradouro, &bairro, &cep, &cidade, &uf)
 		mensagemErro(err)
 		cliente := Cliente{}
-		cliente.Id = id
-		cliente.PrimeiroNome = nome
-		cliente.Sobrenome = sobrenome
-		endereco := Endereco{endereco_id, logradouro, cep, bairro, cidade, uf}
+		cliente.Id = id.Int64
+		cliente.PrimeiroNome = nome.String
+		cliente.Sobrenome = sobrenome.String
+		endereco := Endereco{endereco_id.Int64, logradouro.String, cep.Int64, bairro.String, cidade.String, uf.String}
 		cliente.Endereco = &endereco
 		clientes = append(clientes, cliente)
 	}
@@ -141,15 +151,15 @@ func ConsultaPorUmID(w http.ResponseWriter, r *http.Request) {
 	cliente := Cliente{}
 	for selecinarUmCliente.Next() {
 		var (
-			id, endereco_id, cep int
-			nome, sobrenome, logradouro, cidade, bairro, uf string
+			id, endereco_id, cep                            sql.NullInt64
+			nome, sobrenome, logradouro, cidade, bairro, uf sql.NullString
 		)
 		err := selecinarUmCliente.Scan(&id, &nome, &sobrenome, &endereco_id, &logradouro, &bairro, &cep, &cidade, &uf)
 		mensagemErro(err)
-		cliente.Id = id
-		cliente.PrimeiroNome = nome
-		cliente.Sobrenome = sobrenome
-		endereco := Endereco{endereco_id, logradouro, cep, bairro, cidade, uf}
+		cliente.Id = id.Int64
+		cliente.PrimeiroNome = nome.String
+		cliente.Sobrenome = sobrenome.String
+		endereco := Endereco{endereco_id.Int64, logradouro.String, cep.Int64, bairro.String, cidade.String, uf.String}
 		cliente.Endereco = &endereco
 	}
 	defer db.Close()
